@@ -131,3 +131,13 @@ Using the baseline scenario (no vaccination), try modifying these parameters:
 ### Explore: Contact Interventions
 
 Experiment with different contact layers (school, work, community) to see which settings have the greatest impact on transmission.
+
+---
+
+## EpyScenario is Open Source
+
+The EpyScenario dashboard is fully open source: [github.com/ngozzi/epydemix-dashboard](https://github.com/ngozzi/epydemix-dashboard/tree/main)
+
+You can fork the repository, modify it for your own use case, and deploy your own version using [Streamlit](https://streamlit.io/).
+
+**Want to contribute?** We welcome contributions via pull request. You can also [open an issue](https://github.com/ngozzi/epydemix-dashboard/issues) on GitHub or reach out at epydemix@isi.it.

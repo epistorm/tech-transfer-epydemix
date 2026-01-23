@@ -48,7 +48,7 @@ Build age-structured epidemic models, run simulations with real population data,
 | **2. Loading Population Data** | Import demographics and contact matrices for 400+ geographies |
 | **3. Running Simulations** | Execute stochastic chain-binomial simulations, visualize compartments and trajectories |
 | **4. Modeling Interventions** | Use `add_intervention` (contact reduction) and `override_parameter` (transmission changes) |
-| **5. Vaccination Campaigns** | Create custom transition functions, model vaccine effectiveness with additional compartments (Python only) |
+| **5. Vaccination Campaigns** | Add a vaccination compartment (S→SV) with spontaneous transition, model vaccine effectiveness |
 
 ### Key Concepts
 
@@ -99,7 +99,7 @@ Calibrate epidemic models to observed data using Approximate Bayesian Computatio
 
 ## Data Files
 
-- [data/vaccination_doses.csv](data/vaccination_doses.csv) — Pre-generated vaccination schedule used in Tutorial 1
+- [data/incidence_data.csv](data/incidence_data.csv) — Synthetic incidence data used in Tutorial 2
 
 ---
 

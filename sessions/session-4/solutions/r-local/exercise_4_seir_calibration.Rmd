@@ -1,5 +1,5 @@
 ---
-title: "Exercise 4 Solution: SEIR Calibration and Projection"
+title: "Exercise 4 Solution: Calibrate and Project an SEIR Model with Interventions"
 subtitle: "Session 4 - Exercise Solutions"
 output:
   html_document:
@@ -13,354 +13,403 @@ output:
 knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 ```
 
+## Scenario
+
+An outbreak occurs in California. After some time, interventions are implemented that reduce transmission. We will:
+
+1. Generate synthetic data from an SEIR model with an intervention (β drops mid-epidemic)
+2. Calibrate the model to recover the initial β and the reduction factor
+3. Project forward under different scenarios (status quo vs. relaxation)
+
 ## Prerequisites
 
-```{r load-reticulate}
+```{r load-packages}
 library(reticulate)
-library(readr)
+py_require("epydemix")
 library(ggplot2)
-library(dplyr)
 
-# Option A: Use a conda environment
-# use_condaenv("epydemix-workshop")
-
-# Option B: Use system Python
-# use_python("/usr/bin/python3")
-
-# Import epydemix modules
+# Import Python modules
 epydemix <- import("epydemix")
 EpiModel <- epydemix$EpiModel
+simulate <- epydemix$simulate
+load_epydemix_population <- epydemix$population$load_epydemix_population
 builtins <- import_builtins()
 np <- import("numpy")
+pd <- import("pandas")
+scipy_stats <- import("scipy.stats")
+plt <- import("matplotlib.pyplot")
+
+# Calibration and visualization
+calib <- import("epydemix.calibration")
+ABCSampler <- calib$ABCSampler
+rmse <- calib$rmse
+viz <- import("epydemix.visualization")
+plot_quantiles <- viz$plot_quantiles
+plot_posterior_distribution <- viz$plot_posterior_distribution
 utils_module <- import("epydemix.utils")
 compute_simulation_dates <- utils_module$compute_simulation_dates
 ```
 
 ---
 
-## 1. Load and Prepare Data
+## Task 1: Generate Synthetic Data
 
-```{r load-data}
-# Load incidence data
-data <- read_csv(
-  "https://raw.githubusercontent.com/epistorm/epydemix/refs/heads/main/tutorials/data/incidence_data.csv",
-  show_col_types = FALSE
+We create an SEIR model for California where:
+
+- Initial β = 0.035 (baseline transmission)
+- On day 50, interventions reduce β to 60% of original (reduction_factor = 0.6)
+- The epidemic runs for 120 days total
+
+```{r setup-params}
+# True parameters (what we'll try to recover)
+TRUE_BETA <- 0.035
+TRUE_REDUCTION <- 0.6  # β drops to 60% of original
+INTERVENTION_DAY <- 50L
+
+# Simulation settings
+START_DATE <- "2026-01-01"
+END_DATE <- "2026-04-30"  # 120 days
+CALIBRATION_END <- "2026-03-15"  # Calibrate up to day 74
+
+# Fixed disease parameters
+SIGMA <- 0.2   # 5-day latent period
+GAMMA <- 0.1   # 10-day infectious period
+
+# Compute intervention date
+intervention_date <- as.character(as.Date(START_DATE) + INTERVENTION_DAY)
+
+cat(sprintf("Intervention date: %s\n", intervention_date))
+cat(sprintf("β before intervention: %s\n", TRUE_BETA))
+cat(sprintf("β after intervention: %s\n", TRUE_BETA * TRUE_REDUCTION))
+```
+
+```{r create-model}
+# Function to create SEIR model
+create_seir_model <- function(beta = TRUE_BETA) {
+  model <- EpiModel(name = "SEIR", compartments = c("S", "E", "I", "R"))
+
+  params_SE <- builtins$tuple(list("beta", "I"))
+  model$add_transition(source = "S", target = "E", params = params_SE, kind = "mediated")
+  model$add_transition(source = "E", target = "I", params = "sigma", kind = "spontaneous")
+  model$add_transition(source = "I", target = "R", params = "gamma", kind = "spontaneous")
+
+  model$add_parameter("beta", beta)
+  model$add_parameter("sigma", SIGMA)
+  model$add_parameter("gamma", GAMMA)
+
+  # Load California population
+  population <- load_epydemix_population("United_States_California")
+  model$set_population(population)
+
+  return(model)
+}
+
+# Create model and add intervention
+model_truth <- create_seir_model()
+
+# Add intervention: β drops after INTERVENTION_DAY
+model_truth$override_parameter(
+  start_date = intervention_date,
+  end_date = END_DATE,
+  parameter_name = "beta",
+  value = TRUE_BETA * TRUE_REDUCTION
 )
-data <- data %>% mutate(date = as.Date(date))
 
-# Split: first 80 days for calibration, rest for validation
-calibration_days <- 80
-data_calibration <- data[1:calibration_days, ]
-data_validation <- data[(calibration_days + 1):nrow(data), ]
+model_truth
+```
 
-cat(sprintf("Calibration period: %s to %s (%d days)\n",
+```{r generate-data}
+# Generate synthetic data
+population <- model_truth$population
+Nk_r <- py_to_r(population$Nk)
+n_groups <- length(Nk_r)
+
+# Initial conditions: seed with 1000 infected
+initial_infected <- 1000L
+infected_per_group <- rep(as.integer(initial_infected / n_groups), n_groups)
+
+initial_conditions <- reticulate::dict(
+  S = as.integer(Nk_r - infected_per_group),
+  E = rep(0L, n_groups),
+  I = infected_per_group,
+  R = rep(0L, n_groups)
+)
+
+# Run one simulation to generate "observed" data
+results_truth <- model_truth$run_simulations(
+  start_date = START_DATE,
+  end_date = END_DATE,
+  Nsim = 1L,
+  initial_conditions_dict = initial_conditions
+)
+
+# Extract incidence (E→I transitions)
+transitions <- results_truth$get_stacked_transitions()
+incidence <- py_to_r(transitions["E_to_I_total"])$E_to_I_total[1, ]  # First simulation
+dates <- seq(as.Date(START_DATE), by = "day", length.out = length(incidence))
+
+# Create data frame
+data <- data.frame(date = dates, data = incidence)
+
+cat(sprintf("Generated %d days of data\n", nrow(data)))
+cat(sprintf("Peak incidence: %.0f on day %d\n", max(data$data), which.max(data$data)))
+```
+
+```{r split-data}
+# Split into calibration and projection periods
+calibration_end_date <- as.Date(CALIBRATION_END)
+data_calibration <- data[data$date <= calibration_end_date, ]
+data_projection <- data[data$date > calibration_end_date, ]
+
+cat(sprintf("Calibration: %s to %s (%d days)\n",
             data_calibration$date[1], data_calibration$date[nrow(data_calibration)],
             nrow(data_calibration)))
-cat(sprintf("Validation period: %s to %s (%d days)\n",
-            data_validation$date[1], data_validation$date[nrow(data_validation)],
-            nrow(data_validation)))
+cat(sprintf("Projection:  %s to %s (%d days)\n",
+            data_projection$date[1], data_projection$date[nrow(data_projection)],
+            nrow(data_projection)))
 ```
 
 ```{r viz-data, fig.width=10, fig.height=4}
+# Visualize the synthetic data
 ggplot() +
   geom_point(data = data_calibration, aes(x = date, y = data), color = "black", size = 1.5) +
-  geom_point(data = data_validation, aes(x = date, y = data), color = "gray", alpha = 0.5, size = 1.5) +
-  geom_vline(xintercept = as.numeric(data_calibration$date[nrow(data_calibration)]),
-             color = "red", linetype = "dashed", alpha = 0.5) +
-  labs(x = "Date", y = "New Infections", title = "Incidence Data: Calibration vs Validation Split") +
+  geom_point(data = data_projection, aes(x = date, y = data), color = "gray", alpha = 0.5, size = 1.5) +
+  geom_vline(xintercept = as.numeric(as.Date(intervention_date)), color = "blue",
+             linetype = "dashed", alpha = 0.7) +
+  geom_vline(xintercept = as.numeric(calibration_end_date), color = "red",
+             linetype = "dashed", alpha = 0.7) +
+  labs(x = "Date", y = "New Infections (E→I)",
+       title = "Synthetic Epidemic Data: California SEIR with Intervention") +
   theme_minimal()
 ```
 
 ---
 
-## 2. Set Up the SEIR Model
+## Task 2: Set Up the Calibration Model
 
-```{r setup-model}
-# Create SEIR model
-model <- EpiModel(name = "SEIR", compartments = c("S", "E", "I", "R"))
+We'll calibrate two parameters:
 
-params_SE <- builtins$tuple(list("beta", "I"))
-model$add_transition(source = "S", target = "E", params = params_SE, kind = "mediated")
-model$add_transition(source = "E", target = "I", params = "sigma", kind = "spontaneous")
-model$add_transition(source = "I", target = "R", params = "gamma", kind = "spontaneous")
+- `beta`: Initial transmission rate (before intervention)
+- `reduction`: The factor by which β is reduced after the intervention
 
-model$add_parameter("beta", 0.02)
-model$add_parameter("sigma", 0.2)
-model$add_parameter("gamma", 0.15)
+```{r setup-calibration}
+# Create calibration model
+model_calib <- create_seir_model()
 
-# Load Indonesia population
-model$import_epydemix_population(population_name = "Indonesia")
-model
+# Store end date for wrapper in Python environment
+py_run_string(sprintf('
+import pandas as pd
+OVERRIDE_END_DATE = pd.to_datetime("%s")
+intervention_date = "%s"
+', END_DATE, intervention_date))
 ```
 
-```{r setup-params}
-# Initial conditions: 0.05% of population infected
-Nk_r <- py_to_r(model$population$Nk)
-infected <- as.integer(Nk_r * 0.05 / 100)
-exposed <- rep(0L, length(Nk_r))
-susceptible <- as.integer(Nk_r - infected)
-recovered <- rep(0L, length(Nk_r))
+```{r setup-wrapper}
+# Define wrapper function in Python
+py_run_string('
+from epydemix import simulate
 
-initial_conditions <- reticulate::dict(
-  S = susceptible,
-  E = exposed,
-  I = infected,
-  R = recovered
-)
+def simulate_wrapper(parameters):
+    """Wrapper that applies intervention and runs simulation."""
+    # Extract sampled parameters
+    reduction = parameters.get("reduction", 1.0)
+    beta = parameters.get("beta", 0.035)
 
-# Date strings
-start_date_chr <- as.character(data_calibration$date[1])
-end_date_calibration_chr <- as.character(data_calibration$date[nrow(data_calibration)])
-end_date_validation_chr <- as.character(data_validation$date[nrow(data_validation)])
+    # Clear previous overrides and add intervention
+    parameters["epimodel"].clear_overrides()
+    parameters["epimodel"].override_parameter(
+        start_date=intervention_date,
+        end_date=OVERRIDE_END_DATE,
+        parameter_name="beta",
+        value=beta * reduction
+    )
 
-# Parameters dict for calibration
-parameters <- reticulate::dict(
-  initial_conditions_dict = initial_conditions,
-  epimodel = model,
-  start_date = start_date_chr,
-  end_date = end_date_calibration_chr
-)
+    # Run simulation
+    results = simulate(**parameters)
 
-# Compute simulation dates
-simulation_dates_calibration <- compute_simulation_dates(
-  start_date = start_date_chr,
-  end_date = end_date_calibration_chr
-)
-simulation_dates_full <- compute_simulation_dates(
-  start_date = start_date_chr,
-  end_date = end_date_validation_chr
-)
+    return {"data": results.transitions["E_to_I_total"]}
+')
+
+simulate_wrapper <- py$simulate_wrapper
 ```
 
 ---
 
-## 3. Define Priors and Calibration Wrapper
+## Task 3: Define Priors and Run Calibration
 
 ```{r define-priors}
-# Import scipy.stats for priors
-scipy_stats <- import("scipy.stats")
-
 # Define priors
 priors <- reticulate::dict(
-  beta = scipy_stats$uniform(loc = 0.01, scale = 0.02),    # U(0.01, 0.03)
-  sigma = scipy_stats$uniform(loc = 0.1, scale = 0.2),     # U(0.1, 0.3)
-  gamma = scipy_stats$uniform(loc = 0.1, scale = 0.1)      # U(0.1, 0.2)
+  beta = scipy_stats$uniform(loc = 0.02, scale = 0.025),      # U(0.02, 0.045)
+  reduction = scipy_stats$uniform(loc = 0.3, scale = 0.6)     # U(0.3, 0.9)
 )
+
+cat("Prior distributions:\n")
+cat("  beta: U(0.02, 0.045)\n")
+cat("  reduction: U(0.3, 0.9)\n")
+cat(sprintf("\nTrue values: beta=%s, reduction=%s\n", TRUE_BETA, TRUE_REDUCTION))
 ```
 
-```{r define-wrapper}
-# Import calibration module
-calib <- import("epydemix.calibration")
-ABCSampler <- calib$ABCSampler
-rmse <- calib$rmse
+```{r setup-abc}
+# Calibration parameters
+calibration_parameters <- reticulate::dict(
+  initial_conditions_dict = initial_conditions,
+  epimodel = model_calib,
+  start_date = START_DATE,
+  end_date = CALIBRATION_END
+)
 
-# Define the wrapper function in Python (required for ABCSampler)
-py_run_string("
-from epydemix import simulate
-
-def simulate_wrapper(parameters):
-    results = simulate(**parameters)
-    return {'data': results.transitions['S_to_E_total']}
-")
-
-simulate_wrapper <- py$simulate_wrapper
-
-# Initialize the ABC sampler
+# Initialize ABC sampler
 abc_sampler <- ABCSampler(
   simulation_function = simulate_wrapper,
   priors = priors,
-  parameters = parameters,
+  parameters = calibration_parameters,
   observed_data = data_calibration$data,
   distance_function = rmse
 )
 ```
 
----
-
-## 4. Run Calibration
-
 ```{r run-calibration}
 # Run ABC-SMC calibration
-results_seir <- abc_sampler$calibrate(
+cat("Running calibration...\n")
+calibration_results <- abc_sampler$calibrate(
   strategy = "smc",
   num_particles = 100L,
   num_generations = 5L
 )
+cat("Done!\n")
 ```
 
 ### Visualize Posterior Distributions
 
 ```{r viz-posteriors}
-viz <- import("epydemix.visualization")
-plot_posterior_distribution <- viz$plot_posterior_distribution
-plot_quantiles <- viz$plot_quantiles
-
 # Get posterior
-posterior <- results_seir$get_posterior_distribution()
+posterior <- calibration_results$get_posterior_distribution()
 
-# Plot marginal posteriors
-plot_posterior_distribution(posterior, "beta", kind = "kde", title = "Transmission Rate")
-plot_posterior_distribution(posterior, "sigma", kind = "kde", title = "Latent Rate")
-plot_posterior_distribution(posterior, "gamma", kind = "kde", title = "Recovery Rate")
+# Beta posterior
+ax1 <- plot_posterior_distribution(posterior, "beta", kind = "kde",
+                                   title = "Transmission Rate (β)", color = "blue")
+ax1$axvline(TRUE_BETA, color = "red", linestyle = "--", label = sprintf("True value (%s)", TRUE_BETA))
+ax1$legend()
+plt$show()
+
+# Reduction posterior
+ax2 <- plot_posterior_distribution(posterior, "reduction", kind = "kde",
+                                   title = "Reduction Factor", color = "orange")
+ax2$axvline(TRUE_REDUCTION, color = "red", linestyle = "--", label = sprintf("True value (%s)", TRUE_REDUCTION))
+ax2$legend()
+plt$show()
 ```
 
 ```{r print-posteriors}
 # Print posterior summaries
 posterior_r <- py_to_r(posterior)
-cat("Posterior parameter estimates (median [IQR]):\n")
-for (param in c("beta", "sigma", "gamma")) {
-  values <- posterior_r[[param]]
-  cat(sprintf("  %s: %.4f [%.4f, %.4f]\n", param,
-              median(values), quantile(values, 0.25), quantile(values, 0.75)))
-}
 
-# Derived quantities
-cat("\nDerived quantities:\n")
-latent_period <- 1 / posterior_r[["sigma"]]
-infectious_period <- 1 / posterior_r[["gamma"]]
-cat(sprintf("  Latent period: %.1f days [%.1f, %.1f]\n",
-            median(latent_period), quantile(latent_period, 0.25), quantile(latent_period, 0.75)))
-cat(sprintf("  Infectious period: %.1f days [%.1f, %.1f]\n",
-            median(infectious_period), quantile(infectious_period, 0.25), quantile(infectious_period, 0.75)))
+cat("Posterior estimates vs True values:\n")
+cat(sprintf("%-12s %-10s %-20s %-10s\n", "Parameter", "Median", "IQR", "True"))
+cat(strrep("-", 52), "\n")
+
+for (param in c("beta", "reduction")) {
+  true_val <- if (param == "beta") TRUE_BETA else TRUE_REDUCTION
+  values <- posterior_r[[param]]$values
+  med <- median(values)
+  q25 <- quantile(values, 0.25)
+  q75 <- quantile(values, 0.75)
+  
+  cat(sprintf("%-12s %-10.4f [%.4f, %.4f]   %-10.4f\n", param, med, q25, q75, true_val))
+}
 ```
 
 ---
 
-## 5. Run Projections
+## Task 4: Project Under Alternative Scenarios
+
+We'll compare two scenarios for the projection period:
+
+1. **Status quo**: Interventions remain in place (β stays reduced)
+2. **Relaxation**: Interventions are lifted (β returns to baseline)
 
 ```{r run-projections}
-# Create projection parameters (extend to validation period)
-projection_parameters <- reticulate::dict(
+cat("Running scenario projections...\n")
+
+# Run projections (status quo - interventions maintained)
+params_status_quo <- reticulate::dict(
   initial_conditions_dict = initial_conditions,
-  epimodel = model,
-  start_date = start_date_chr,
-  end_date = end_date_validation_chr
+  epimodel = model_calib,
+  start_date = START_DATE,
+  end_date = as.character(data_projection$date[nrow(data_projection)])
 )
+results_status_quo <- abc_sampler$run_projections(params_status_quo)
+cat("  Status quo: done\n")
 
-# Run projections
-results_with_projections <- abc_sampler$run_projections(projection_parameters)
+# Change OVERRIDE_END_DATE to stop intervention at calibration end
+py_run_string(sprintf('OVERRIDE_END_DATE = "%s"', CALIBRATION_END))
+
+# Run projections (relaxation - interventions lifted)
+params_relaxation <- reticulate::dict(
+  initial_conditions_dict = initial_conditions,
+  epimodel = model_calib,
+  start_date = START_DATE,
+  end_date = as.character(data_projection$date[nrow(data_projection)])
+)
+results_relaxation <- abc_sampler$run_projections(params_relaxation)
+cat("  Relaxation: done\n")
 ```
 
-```{r viz-projections}
-# Get quantiles
-df_calibration <- results_with_projections$get_calibration_quantiles(simulation_dates_calibration)
-df_projection <- results_with_projections$get_projection_quantiles(simulation_dates_full)
-
-sns <- import("seaborn")
-colors <- py_to_r(sns$color_palette("Dark2"))
-
-# Plot calibration fit
-ax <- plot_quantiles(df_calibration, columns = "data",
-                     colors = colors[[2]], show_data = FALSE, labels = list("Calibration fit"))
-ax <- plot_quantiles(df_projection, columns = "data",
-                     colors = colors[[1]], show_data = FALSE, labels = list("Projection"), ax = ax)
-
-# Add observed data
-ax$plot(as.character(data_calibration$date), data_calibration$data,
-        "ko", markersize = 4L, label = "Calibration data")
-ax$plot(as.character(data_validation$date), data_validation$data,
-        "o", color = "gray", markersize = 4L, alpha = 0.6, label = "Validation data")
-
-ax$axvline(as.character(data_calibration$date[nrow(data_calibration)]),
-           color = "red", linestyle = "--", alpha = 0.5)
-
-ax$set_ylabel("New Infections")
-ax$set_title("SEIR Model: Calibration and Projection")
-ax$legend(loc = "upper right")
-ax
-```
-
----
-
-## 6. Bonus: Compare SEIR to SIR Calibration
-
-```{r calibrate-sir}
-# Load predefined SIR model
-load_predefined_model <- epydemix$load_predefined_model
-model_sir <- load_predefined_model("SIR")
-model_sir$import_epydemix_population(population_name = "Indonesia")
-
-# Initial conditions for SIR
-Nk_sir <- py_to_r(model_sir$population$Nk)
-initial_conditions_sir <- reticulate::dict(
-  Susceptible = as.integer(Nk_sir - as.integer(Nk_sir * 0.05 / 100)),
-  Infected = as.integer(Nk_sir * 0.05 / 100),
-  Recovered = rep(0L, length(Nk_sir))
+```{r viz-scenarios}
+# Compute projection dates
+projection_dates <- compute_simulation_dates(
+  start_date = START_DATE,
+  end_date = as.character(data_projection$date[nrow(data_projection)])
 )
 
-parameters_sir <- reticulate::dict(
-  initial_conditions_dict = initial_conditions_sir,
-  epimodel = model_sir,
-  start_date = start_date_chr,
-  end_date = end_date_calibration_chr
-)
+# Get quantiles for plotting
+df_status_quo <- results_status_quo$get_projection_quantiles(projection_dates)
+df_relaxation <- results_relaxation$get_projection_quantiles(projection_dates)
 
-# SIR priors
-priors_sir <- reticulate::dict(
-  transmission_rate = scipy_stats$uniform(loc = 0.01, scale = 0.02),
-  recovery_rate = scipy_stats$uniform(loc = 0.1, scale = 0.15)
-)
+# Convert data to Python DataFrame for plot_quantiles
+data_py <- pd$DataFrame(reticulate::dict(
+  date = as.character(data$date),
+  data = data$data
+))
 
-# SIR wrapper
-py_run_string("
-def simulate_wrapper_sir(parameters):
-    results = simulate(**parameters)
-    return {'data': results.transitions['Susceptible_to_Infected_total']}
-")
+# Plot scenario comparison
+ax <- plot_quantiles(df_status_quo, columns = "data", data = data_py,
+                     colors = "orange", show_legend = FALSE, show_data = TRUE,
+                     labels = list("Status Quo"))
+ax <- plot_quantiles(df_relaxation, columns = "data", ax = ax,
+                     colors = "blue", show_legend = FALSE, show_data = FALSE,
+                     labels = list("Relaxation"))
 
-abc_sampler_sir <- ABCSampler(
-  simulation_function = py$simulate_wrapper_sir,
-  priors = priors_sir,
-  parameters = parameters_sir,
-  observed_data = data_calibration$data,
-  distance_function = rmse
-)
+ax$legend(loc = "upper left", frameon = FALSE)
+ax$set_xlabel("Date")
+ax$set_ylabel("New Infections (E→I)")
+ax$set_title("Scenario Projections: Impact of Intervention Policies")
 
-# Calibrate
-results_sir <- abc_sampler_sir$calibrate(
-  strategy = "smc",
-  num_particles = 100L,
-  num_generations = 5L
-)
-```
-
-```{r compare-distances}
-# Compare distance distributions
-plot_distance_distribution <- viz$plot_distance_distribution
-
-ax <- plot_distance_distribution(results_seir$get_distances(),
-                                  kind = "kde", color = colors[[1]], label = "SEIR", xlabel = "RMSE")
-ax <- plot_distance_distribution(results_sir$get_distances(),
-                                  kind = "kde", color = colors[[2]], label = "SIR", xlabel = "RMSE", ax = ax)
-ax$set_title("Calibration Performance: SEIR vs SIR")
-ax$legend()
-ax
-
-cat(sprintf("Median RMSE - SEIR: %.0f\n", median(py_to_r(results_seir$get_distances()))))
-cat(sprintf("Median RMSE - SIR: %.0f\n", median(py_to_r(results_sir$get_distances()))))
+plt$tight_layout()
+plt$show()
 ```
 
 ---
 
 ## Discussion
 
-**How do the posterior distributions compare?**
+**Key findings:**
 
-- The SEIR model has an additional parameter (sigma, the latent rate) that the SIR model lacks
-- This gives SEIR more flexibility to capture the delay between infection and becoming infectious
-- The SEIR beta estimate may differ from SIR because it accounts for the latent period
+1. **Parameter recovery**: The calibration successfully recovered the true values of β and the reduction factor, demonstrating that ABC-SMC can identify intervention effects from incidence data.
 
-**Does adding the E compartment improve the fit?**
+2. **Scenario projections**: The two scenarios show different outcomes:
+   - **Status quo**: Continuing interventions keeps transmission reduced, leading to a controlled decline in infections
+   - **Relaxation**: Lifting interventions allows β to return to baseline, resulting in higher transmission during the projection period
 
-The improvement depends on:
+**Policy implications:**
 
-1. **The disease:** If there's a significant latent period, SEIR is more appropriate
-2. **The data:** The original data was generated from an SIR model, so SIR may fit equally well
-3. **Model complexity:** SEIR has more parameters, which could lead to overfitting
+- Premature relaxation of interventions can lead to increased infections
+- Model projections provide a framework for comparing policy options under uncertainty
+- Decision-makers can use these projections to weigh trade-offs between maintaining restrictions and relaxing them
 
-**Key takeaways:**
+**Limitations:**
 
-- Model selection should be guided by biological plausibility, not just fit
-- More complex models require more data to constrain
-- The latent period matters for forecasting timing of epidemic waves
-- Validation on held-out data is essential for assessing projection accuracy
+- This exercise uses synthetic data; real-world data has additional complexities (reporting delays, changing behavior, etc.)
+- We assumed known intervention timing; in practice, this may need to be estimated
+- The model assumes homogeneous mixing and does not account for spatial heterogeneity

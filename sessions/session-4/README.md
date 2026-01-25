@@ -148,47 +148,70 @@ model.add_transition(source="R1", target="I2", kind="mediated", params=("beta*ps
 
 ---
 
-## Exercise 4: Calibrate and Project an SEIR Model
+## Exercise 4: Calibrate and Project an SEIR Model with Interventions
 
-**Objective:** Calibrate an SEIR model to real-world-like data and generate projections.
+| | Template | Solution |
+|---|---|---|
+| Python | [exercise_4_seir_calibration.ipynb](exercises/python/exercise_4_seir_calibration.ipynb) | [exercise_4_seir_calibration.ipynb](solutions/python/exercise_4_seir_calibration.ipynb) |
+| R (Colab) | [exercise_4_seir_calibration.ipynb](exercises/r-colab/exercise_4_seir_calibration.ipynb) | [exercise_4_seir_calibration.ipynb](solutions/r-colab/exercise_4_seir_calibration.ipynb) |
+| R (Local) | [exercise_4_seir_calibration.Rmd](exercises/r-local/exercise_4_seir_calibration.Rmd) | [exercise_4_seir_calibration.Rmd](solutions/r-local/exercise_4_seir_calibration.Rmd) |
+
+**Objective:** Generate synthetic outbreak data with an intervention, calibrate model parameters, and project under alternative policy scenarios.
 
 **Skills practiced:**
-- Setting up ABC calibration
-- Defining appropriate priors
-- Running projections with uncertainty
+- Generating synthetic "ground truth" data with interventions
+- Setting up ABC-SMC calibration with multiple parameters
+- Using `override_parameter` for time-varying transmission
+- Running scenario-based projections with uncertainty
+
+**Scenario:** An SEIR outbreak begins in California. On day 50, interventions reduce transmission (β) to 60% of its original value. You observe incidence data through day 74, then project forward under different policy scenarios.
 
 **Tasks:**
 
-1. Use the incidence data from the calibration tutorial but fit an **SEIR model** instead of SIR:
-   ```python
-   data = pd.read_csv('https://raw.githubusercontent.com/epistorm/epydemix/refs/heads/main/tutorials/data/incidence_data.csv')
-   ```
+1. **Generate synthetic data** from an SEIR model for California:
+   - Use β = 0.035, σ = 0.2, γ = 0.1
+   - At day 50, β drops to 60% of baseline (intervention effect)
+   - Run for 120 days, extract E → I transitions as "observed" incidence
 
-2. Set up the SEIR model with Indonesia population and define priors:
-   - transmission_rate: U(0.01, 0.03)
-   - latent_rate (σ): U(0.1, 0.3) — corresponds to 3-10 day latent period
-   - recovery_rate: U(0.1, 0.2)
+2. **Set up calibration** with priors for two parameters:
+   - `beta`: U(0.02, 0.045) — baseline transmission rate
+   - `reduction`: U(0.3, 0.9) — fraction β drops to during intervention
 
-3. Create a wrapper function that returns the S → E transitions (new exposures)
+3. **Run ABC-SMC calibration** using the first 74 days of data:
+   - 100 particles, 5 generations
+   - Compare posterior distributions to true values
 
-4. Run ABC-SMC calibration with 100 particles and 5 generations
+4. **Project under two scenarios** from day 74 onward:
+   - **Status quo:** Intervention continues (β stays reduced)
+   - **Relaxation:** Interventions are lifted (β returns to baseline)
 
-5. Split the data: use first 80 days for calibration, remaining for validation
-
-6. Run projections and compare to held-out data
+5. **Visualize and compare** projections against the held-out "truth"
 
 **Discussion:**
-- How do the posterior distributions compare to the SIR calibration?
-- Does adding the E compartment improve the fit?
+- Can ABC-SMC recover the true β and reduction factor?
+- How do the two scenarios differ in projected infections?
+- What are the implications for policy decision-making under uncertainty?
 
 <details>
 <summary>Hint</summary>
 
-For the wrapper function with an SEIR model, extract the S → E transitions:
+To implement the intervention in the simulation wrapper:
 ```python
 def simulate_wrapper(parameters):
+    # Extract calibrated parameters
+    beta = parameters["beta"]
+    reduction = parameters["reduction"]
+
+    # Override beta after intervention day
+    model.override_parameter(
+        start_date=intervention_date,
+        end_date=end_date,
+        parameter_name="beta",
+        value=beta * reduction
+    )
+
     results = simulate(**parameters)
-    return {"data": results.transitions["S_to_E_total"]}  # Adjust compartment names
+    return {"data": results.transitions["S_to_E_total"]}
 ```
 </details>
 

@@ -21,7 +21,7 @@ Each solution is available in three formats:
 | 1. SEIRS Model | [python](python/exercise_1_seirs_model.ipynb) | [r-colab](r-colab/exercise_1_seirs_model.ipynb) | [r-local](r-local/exercise_1_seirs_model.Rmd) | Waning immunity, R→S transition, comparing SEIR vs SEIRS |
 | 2. Intervention Comparison | [python](python/exercise_2_interventions.ipynb) | [r-colab](r-colab/exercise_2_interventions.ipynb) | [r-local](r-local/exercise_2_interventions.Rmd) | `add_intervention`, contact reductions, quantifying impact |
 | 3. Two-Strain Model | [python](python/exercise_3_two_strains.ipynb) | [r-colab](r-colab/exercise_3_two_strains.ipynb) | [r-local](r-local/exercise_3_two_strains.Rmd) | Multi-strain dynamics, `override_parameter`, variant emergence |
-| 4. SEIR Calibration | [python](python/exercise_4_seir_calibration.ipynb) | [r-colab](r-colab/exercise_4_seir_calibration.ipynb) | [r-local](r-local/exercise_4_seir_calibration.Rmd) | ABC-SMC, priors, projections, model comparison |
+| 4. SEIR Calibration | [python](python/exercise_4_seir_calibration.ipynb) | [r-colab](r-colab/exercise_4_seir_calibration.ipynb) | [r-local](r-local/exercise_4_seir_calibration.Rmd) | ABC-SMC calibration, intervention effects, scenario projections |
 
 ## Running the Solutions
 

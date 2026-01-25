@@ -6,6 +6,12 @@ Independent exercises to reinforce concepts from Session 3. Work through these a
 
 ## Exercise 1: SEIRS Model for a Different Country (Beginner)
 
+| | Template | Solution |
+|---|---|---|
+| Python | [exercise_1_seirs_model.ipynb](exercises/python/exercise_1_seirs_model.ipynb) | [exercise_1_seirs_model.ipynb](solutions/python/exercise_1_seirs_model.ipynb) |
+| R (Colab) | [exercise_1_seirs_model.ipynb](exercises/r-colab/exercise_1_seirs_model.ipynb) | [exercise_1_seirs_model.ipynb](solutions/r-colab/exercise_1_seirs_model.ipynb) |
+| R (Local) | [exercise_1_seirs_model.Rmd](exercises/r-local/exercise_1_seirs_model.Rmd) | [exercise_1_seirs_model.Rmd](solutions/r-local/exercise_1_seirs_model.Rmd) |
+
 **Objective:** Build an SEIRS model (with waning immunity) and simulate it for a country of your choice.
 
 **Skills practiced:**

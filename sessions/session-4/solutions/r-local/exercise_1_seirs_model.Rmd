@@ -99,20 +99,17 @@ population
 ```{r viz-population}
 # Import visualization module
 viz <- import("epydemix.visualization")
+plt <- import("matplotlib.pyplot")
 plot_population <- viz$plot_population
 plot_contact_matrix <- viz$plot_contact_matrix
 
 # Plot population distribution
 plot_population(population, title = "Brazil Population Distribution")
-plot_population(population, title = "Brazil Population Distribution (%)", show_perc = TRUE)
-```
+plt$show()
 
-```{r viz-contacts}
-# Contact matrices by setting
-plot_contact_matrix(population, "home", show_values = TRUE)
-plot_contact_matrix(population, "school", show_values = TRUE)
-plot_contact_matrix(population, "work", show_values = TRUE)
-plot_contact_matrix(population, "community", show_values = TRUE)
+setting <- "community"
+plot_contact_matrix(population, setting, show_values = TRUE)
+plt$show()
 ```
 
 ---
@@ -149,6 +146,7 @@ plot_quantiles(
   columns = c("S_total", "E_total", "I_total", "R_total"),
   title = "SEIRS Model - Brazil (1 Year)"
 )
+plt$show()
 ```
 
 ### Infections by Age Group
@@ -160,6 +158,7 @@ plot_quantiles(
   title = "Infections by Age Group",
   legend_loc = "upper right"
 )
+plt$show()
 ```
 
 ---
@@ -208,7 +207,7 @@ ax <- plot_quantiles(df_seir, columns = c("I_total"),
                      colors = "red", labels = "SEIR (permanent immunity)", ax = ax)
 ax$set_title("Infected Over Time: SEIRS vs SEIR")
 ax$legend()
-ax
+plt$show()
 ```
 
 ```{r compare-susceptible}
@@ -219,7 +218,7 @@ ax <- plot_quantiles(df_seir, columns = c("S_total"),
                      colors = "red", labels = "SEIR (permanent immunity)", ax = ax)
 ax$set_title("Susceptible Over Time: SEIRS vs SEIR")
 ax$legend()
-ax
+plt$show()
 ```
 
 ---

@@ -59,7 +59,7 @@ By the end, you'll be equipped to incorporate Epydemix into research and operati
 - [Session 1: Theory Behind Epydemix](sessions/session-1/)
 - [Session 2: Epydemix Simulation Platform](sessions/session-2/)
 - [Session 3: Python Package & R Interface](sessions/session-3/)
-- [Session 4: Tutorials and Exercises I](sessions/session-4/)
+- [Session 4: Tutorials and Exercises](sessions/session-4/)
 - [Session 5: Forecast Pipeline and Application](sessions/session-5/)
 - [Session 6: Forecast Visualization & Performance](sessions/session-6/)
 

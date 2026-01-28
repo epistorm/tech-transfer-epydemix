@@ -68,7 +68,7 @@ By the end, you'll be equipped to incorporate Epydemix into research and operati
 
 - [Epydemix Website](https://www.epydemix.org/)
 - [Epydemix Documentation](https://epydemix.readthedocs.io/en/latest/)
-- [EpyScenario Platform](https://scenario.epydemix.org/)
+- [EpyScenario Platform](https://epyscenario.streamlit.app/)
 
 To stay updated on new features and releases, consider starring the [Epydemix repository](https://github.com/epistorm/epydemix) on GitHub.
 

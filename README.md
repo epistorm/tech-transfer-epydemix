@@ -33,10 +33,10 @@ By the end, you'll be equipped to incorporate Epydemix into research and operati
 |------|---------|
 | 09:00 – 09:30 | **Welcome and Overview** — Workshop objectives, introductions, Epydemix ecosystem overview |
 | 09:30 – 11:00 | **Session 1: Theory Behind Epydemix** — Stochastic models (deterministic SIR to chain-binomial), ABC approaches, linking models to forecasting |
-| 11:00 – 11:30 | *Coffee Break* |
-| 11:30 – 12:30 | **Session 2: Epydemix Simulation Platform** — Running SIR/SEIR/SIS simulations, population & contact matrices, configuring interventions |
-| 12:30 – 14:00 | *Lunch Break* |
-| 14:00 – 15:30 | **Session 3: Python Package & R Interface** — Environment setup, modules overview, Jupyter notebooks & R wrapper functions |
+| 11:00 – 11:10 | *Coffee Break* |
+| 11:10 – 12:30 | **Session 2: Epydemix Simulation Platform** — Running SIR/SEIR/SIS simulations, population & contact matrices, configuring interventions |
+| 12:30 – 13:30 | *Lunch Break* |
+| 13:30 – 15:30 | **Session 3: Python Package & R Interface** — Environment setup, modules overview, Jupyter notebooks & R wrapper functions |
 | 15:30 – 16:00 | *Coffee Break* |
 | 16:00 – 17:00 | **Session 3 (cont.): Under the Hood** — Scripting simulations, accessing population data, defining custom compartments & interventions |
 
@@ -44,14 +44,14 @@ By the end, you'll be equipped to incorporate Epydemix into research and operati
 
 | Time | Session |
 |------|---------|
-| 09:00 – 09:30 | **Recap and Day 2 Goals** |
-| 09:30 – 11:00 | **Session 4: Tutorials and Exercises** — Model design, parameterization, retrospective calibration, ABC pipelines |
-| 11:00 – 11:30 | *Coffee Break* |
-| 11:30 – 13:00 | **Session 5: Forecast Pipeline and Application** — Full forecasting workflow, data ingestion, GUI exploration, guided exercises |
-| 13:00 – 14:30 | *Lunch Break* |
-| 14:30 – 16:00 | **Session 6: Forecast Visualization & Performance** — Performance dashboard, validation metrics, comparing model outputs |
-| 16:00 – 16:30 | *Coffee Break* |
-| 16:30 – 17:00 | **Closing Discussion** — Wrap-up, feedback, collaboration opportunities, next steps |
+| 09:00 – 09:15 | **Recap and Day 2 Goals** |
+| 09:15 – 10:15 | **Session 4: Tutorials and Exercises** — Model design, parameterization, retrospective calibration, ABC pipelines |
+| 10:15 – 10:30 | *Coffee Break* |
+| 10:30 – 12:30 | **Session 5: Forecast Pipeline and Application** — Full forecasting workflow, data ingestion, GUI exploration, guided exercises |
+| 12:30 – 13:30 | *Lunch Break* |
+| 13:30 – 15:45 | **Session 6: Forecast Visualization & Performance** — Performance dashboard, validation metrics, comparing model outputs |
+| 15:45 – 16:00 | *Coffee Break* |
+| 16:00 – 17:00 | **Closing Discussion** — Wrap-up, feedback, collaboration opportunities, next steps |
 
 ## Quick Links
 

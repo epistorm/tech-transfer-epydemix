@@ -2,7 +2,7 @@
 
 ![EpyScenario](https://cdn.prod.website-files.com/67bde9057c9d78157874e100/6970f89f26957a863a9a4711_epyscenario-p-1080.png)
 
-Platform: [EpyScenario](https://epyscenario.streamlit.app/)
+Platform: [EpyScenario](https://scenario.epydemix.org/)
 
 This session provides a gentle, no-code introduction to epidemic modeling using the Epydemix simulation dashboard. No programming experience required—everything runs through an interactive web interface.
 
